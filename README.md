@@ -4,6 +4,38 @@ Switch between **Normal / Noise Cancellation / Transparent** modes directly
 from Linux without the Android app, by reverse-engineering the proprietary
 Bluetooth control protocol.
 
+## Setup
+
+### 1. Find your MAC address
+
+Pair your earbuds via your system Bluetooth settings, then run:
+
+```bash
+bluetoothctl devices
+```
+
+Look for your buds in the output:
+
+```
+Device 88:0E:85:C5:FA:87 Realme Buds T310
+```
+
+To confirm it's connected and showing the right profiles:
+
+```bash
+bluetoothctl info <MAC>
+```
+
+The output should include `UUID: Serial Port` — that's the SPP channel this tool uses.
+
+### 2. Set your MAC in the script
+
+Open `realme_anc.py` and replace the MAC on line 31:
+
+```python
+MAC = "88:0E:85:C5:FA:87"   # ← replace with your device's MAC
+```
+
 ## Usage
 
 ```bash
@@ -14,7 +46,7 @@ python3 realme_anc.py transparent  # Transparent mode
 
 Optional shell alias:
 ```bash
-alias anc='python3 /home/funinkina/Projects/realme/realme_anc.py'
+alias anc='python3 /path/to/realme_anc.py'
 # then: anc anc / anc normal / anc transparent
 ```
 
@@ -24,7 +56,6 @@ alias anc='python3 /home/funinkina/Projects/realme/realme_anc.py'
 
 | Property       | Value                                 |
 | -------------- | ------------------------------------- |
-| MAC address    | `88:0E:85:C5:FA:87`                   |
 | Bluetooth      | Classic BT 5.3 (not BLE)              |
 | Protocol       | Serial Port Profile (SPP) over RFCOMM |
 | RFCOMM channel | **1**                                 |
