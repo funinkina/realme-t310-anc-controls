@@ -65,6 +65,18 @@ alias anc='python3 /path/to/realme_anc.py'
 # then: anc anc / anc normal / anc transparent
 ```
 
+### macOS: Raycast hotkeys
+
+`raycast/` has one script command per mode (they use `.venv` from the macOS
+setup above):
+
+1. Raycast → Settings → Extensions → **+** → Add Script Directory → pick `raycast/`
+2. Search "Buds:" in Raycast, or give each command a hotkey under
+   Settings → Extensions → Realme Buds
+
+A HUD confirms the switch. The first run may ask for Bluetooth permission for
+Raycast.
+
 ---
 
 ## Device
@@ -336,6 +348,7 @@ aa 08 00 00 04 84 [seq] 01 00 [status]
 | File                   | Purpose                                                            |
 | ---------------------- | ------------------------------------------------------------------ |
 | `realme_anc.py`        | CLI tool — switches ANC mode via RFCOMM (Linux sockets / macOS IOBluetooth) |
+| `raycast/`             | Raycast script commands for each mode (macOS)                      |
 | `analyze.py`           | Parses a btsnoop_hci.log and extracts/decodes RFCOMM UIH payloads  |
 | `sniff.py`             | Linux-side RFCOMM probe (connectivity check, manual hex send/recv) |
 | `btsnoop_hci.log`      | Captured Android HCI log used for analysis                         |
