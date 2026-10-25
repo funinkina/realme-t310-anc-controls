@@ -87,7 +87,7 @@ GitHub Actions builds it on every push touching `android/`. To install:
 
 ```bash
 gh run download -n buds-anc-apk        # latest successful build
-adb install -r app-debug.apk
+adb install -r BudsAnc-debug.apk
 ```
 
 Open **Buds ANC** once to grant the Bluetooth permission, then add the tile
