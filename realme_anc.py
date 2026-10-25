@@ -8,8 +8,9 @@ Usage:
     python3 realme_anc.py transparent
 
 Requires:
-    - Earbuds paired and connected (check: bluetoothctl info 88:0E:85:C5:FA:87)
+    - Earbuds paired and connected
     - Python 3.10+
+    - macOS only: pip install pyobjc-framework-IOBluetooth
 
 Protocol (confirmed by HCI snoop analysis):
     Classic BT → RFCOMM channel 1 (SPP) → proprietary 'aa' frame protocol.
@@ -70,40 +71,76 @@ MODES: dict[str, bytes] = {
 TIMEOUT = 5  # seconds
 
 
+def _send_linux(payload: bytes) -> bytes | None:
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+    sock.settimeout(TIMEOUT)
+    with sock:
+        sock.connect((MAC, CHANNEL))
+        sock.sendall(payload)
+        sock.settimeout(2.0)
+        try:
+            return sock.recv(64)
+        except socket.timeout:
+            return None
+
+
+def _send_macos(payload: bytes) -> bytes | None:
+    # macOS Python has no AF_BLUETOOTH; RFCOMM goes through IOBluetooth.
+    import IOBluetooth
+    from Foundation import NSDate, NSObject, NSRunLoop
+
+    acks = []
+
+    class Delegate(NSObject):
+        def rfcommChannelData_data_length_(self, ch, data, length):
+            acks.append(bytes(data[:length]))
+
+    dev = IOBluetooth.IOBluetoothDevice.deviceWithAddressString_(MAC)
+    if dev is None or not dev.isConnected():
+        raise OSError("device not connected")
+    delegate = Delegate.alloc().init()
+    status, ch = dev.openRFCOMMChannelSync_withChannelID_delegate_(None, CHANNEL, delegate)
+    if status:
+        raise OSError(f"RFCOMM open failed (IOReturn {status:#x})")
+    try:
+        if status := ch.writeSync_length_(payload, len(payload)):
+            raise OSError(f"RFCOMM write failed (IOReturn {status:#x})")
+        deadline = NSDate.dateWithTimeIntervalSinceNow_(2.0)
+        while not acks and NSDate.date().compare_(deadline) < 0:
+            NSRunLoop.currentRunLoop().runMode_beforeDate_(
+                "kCFRunLoopDefaultMode", NSDate.dateWithTimeIntervalSinceNow_(0.1)
+            )
+    finally:
+        ch.closeChannel()
+    return acks[0] if acks else None
+
+
 def set_mode(mode: str):
     if mode not in MODES:
         print(f"Unknown mode '{mode}'. Choose from: {', '.join(MODES)}")
         sys.exit(1)
 
     payload = MODES[mode]
-    print(f"Connecting to {MAC} (RFCOMM ch{CHANNEL})...")
+    send = _send_macos if sys.platform == "darwin" else _send_linux
+    print(f"Sending mode={mode!r} to {MAC} (RFCOMM ch{CHANNEL}): {payload.hex()}")
 
     try:
-        sock = socket.socket(
-            socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM
-        )
-        sock.settimeout(TIMEOUT)
-        sock.connect((MAC, CHANNEL))
+        ack = send(payload)
+    except ImportError:
+        print("Missing dependency: pip install pyobjc-framework-IOBluetooth")
+        sys.exit(1)
     except OSError as e:
         print(f"Connection failed: {e}")
-        print("Is the device connected?  Check: bluetoothctl info 88:0E:85:C5:FA:87")
+        if sys.platform == "darwin":
+            print("Is it connected (Bluetooth menu) and does your terminal have Bluetooth permission?")
+        else:
+            print(f"Is the device connected?  Check: bluetoothctl info {MAC}")
         sys.exit(1)
 
-    print(f"Sending mode={mode!r} ({len(payload)}B): {payload.hex()}")
-    sock.sendall(payload)
-
-    # Read optional ACK from earbuds
-    sock.settimeout(2.0)
-    try:
-        ack = sock.recv(64)
-        if ack:
-            print(f"ACK from earbuds ({len(ack)}B): {ack.hex()}")
-    except socket.timeout:
-        print(
-            "No ACK (earbuds may require full handshake — see README if mode didn't change)"
-        )
-
-    sock.close()
+    if ack:
+        print(f"ACK from earbuds ({len(ack)}B): {ack.hex()}")
+    else:
+        print("No ACK (earbuds may require full handshake — see README if mode didn't change)")
     print("Done.")
 
 

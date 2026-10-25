@@ -1,7 +1,7 @@
-# Realme Buds T310 — ANC Mode Control for Linux
+# Realme Buds T310 — ANC Mode Control for Linux & macOS
 
 Switch between **Normal / Noise Cancellation / Transparent** modes directly
-from Linux without the Android app, by reverse-engineering the proprietary
+from Linux or macOS without the Android app, by reverse-engineering the proprietary
 Bluetooth control protocol.
 
 ## Setup
@@ -11,7 +11,8 @@ Bluetooth control protocol.
 Pair your earbuds via your system Bluetooth settings, then run:
 
 ```bash
-bluetoothctl devices
+bluetoothctl devices                                         # Linux
+system_profiler SPBluetoothDataType | grep -A1 -i realme     # macOS
 ```
 
 Look for your buds in the output:
@@ -27,6 +28,20 @@ bluetoothctl info <MAC>
 ```
 
 The output should include `UUID: Serial Port` — that's the SPP channel this tool uses.
+
+### macOS only: install IOBluetooth bindings
+
+macOS Python has no `AF_BLUETOOTH` socket support, so the script talks
+RFCOMM through Apple's IOBluetooth framework via PyObjC:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install pyobjc-framework-IOBluetooth
+```
+
+Then use `.venv/bin/python` instead of `python3` below. The first run may
+trigger a Bluetooth permission prompt for your terminal app — allow it
+(System Settings → Privacy & Security → Bluetooth).
 
 ### 2. Set your MAC in the script
 
@@ -320,7 +335,7 @@ aa 08 00 00 04 84 [seq] 01 00 [status]
 
 | File                   | Purpose                                                            |
 | ---------------------- | ------------------------------------------------------------------ |
-| `realme_anc.py`        | CLI tool — switches ANC mode via RFCOMM                            |
+| `realme_anc.py`        | CLI tool — switches ANC mode via RFCOMM (Linux sockets / macOS IOBluetooth) |
 | `analyze.py`           | Parses a btsnoop_hci.log and extracts/decodes RFCOMM UIH payloads  |
 | `sniff.py`             | Linux-side RFCOMM probe (connectivity check, manual hex send/recv) |
 | `btsnoop_hci.log`      | Captured Android HCI log used for analysis                         |
@@ -335,6 +350,8 @@ aa 08 00 00 04 84 [seq] 01 00 [status]
 ```bash
 bluetoothctl connect 88:0E:85:C5:FA:87
 ```
+On macOS, connect the buds from the Bluetooth menu, and check your terminal
+has Bluetooth permission. `sniff.py` is Linux-only.
 
 **Mode doesn't change (but no error)**  
 Try running `sniff.py --probe` to confirm the RFCOMM connection is live, then
