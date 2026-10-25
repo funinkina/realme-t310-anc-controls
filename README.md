@@ -77,6 +77,25 @@ setup above):
 A HUD confirms the switch. The first run may ask for Bluetooth permission for
 Raycast.
 
+### Android: Quick Settings tile
+
+`android/` is a tiny app (no dependencies) adding a **Buds ANC** tile: tap
+cycles Normal → Noise Cancellation → Transparent, long-press opens a screen
+with direct buttons for each mode.
+
+GitHub Actions builds it on every push touching `android/`. To install:
+
+```bash
+gh run download -n buds-anc-apk        # latest successful build
+adb install -r app-debug.apk
+```
+
+Open **Buds ANC** once to grant the Bluetooth permission, then add the tile
+via Quick Settings → edit. Each CI build is signed with a fresh debug key, so
+uninstall before installing a newer build. If the tile shows "Failed" while
+Realme Link is running, force-stop Realme Link (it may hold the SPP channel).
+The earbuds don't report their mode, so the tile shows the last mode it set.
+
 ---
 
 ## Device
@@ -349,6 +368,7 @@ aa 08 00 00 04 84 [seq] 01 00 [status]
 | ---------------------- | ------------------------------------------------------------------ |
 | `realme_anc.py`        | CLI tool — switches ANC mode via RFCOMM (Linux sockets / macOS IOBluetooth) |
 | `raycast/`             | Raycast script commands for each mode (macOS)                      |
+| `android/`             | Android Quick Settings tile app (built by GitHub Actions)          |
 | `analyze.py`           | Parses a btsnoop_hci.log and extracts/decodes RFCOMM UIH payloads  |
 | `sniff.py`             | Linux-side RFCOMM probe (connectivity check, manual hex send/recv) |
 | `btsnoop_hci.log`      | Captured Android HCI log used for analysis                         |
