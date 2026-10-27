@@ -19,7 +19,7 @@ public class MainActivity extends Activity {
     private static final String[] DETAILS = {"Noise control off", "Blocks outside sound", "Lets outside sound in"};
     private final View[] modes = new View[Buds.NAMES.length];
     private TextView connection, detail;
-    private boolean busy;
+    private static boolean busy; // static: survives rotation so a recreated activity can't open a second socket
 
     @Override
     protected void onCreate(Bundle state) {
@@ -82,7 +82,7 @@ public class MainActivity extends Activity {
             try {
                 Buds.set(this, mode);
             } catch (Exception e) {
-                error = "Couldn't switch: " + e.getMessage();
+                error = "Couldn't switch: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
             }
             String err = error;
             runOnUiThread(() -> {
