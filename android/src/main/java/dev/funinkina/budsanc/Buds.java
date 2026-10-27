@@ -2,6 +2,7 @@ package dev.funinkina.budsanc;
 
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -10,6 +11,7 @@ import android.os.Looper;
 
 import java.io.IOException;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /** Same protocol as realme_anc.py: one 'aa' frame over SPP, earbuds ACK it. */
 final class Buds {
@@ -21,6 +23,25 @@ final class Buds {
 
     static int current(Context c) {
         return prefs(c).getInt("mode", 0);
+    }
+
+    /** Async; cb runs on the main thread. Requires BLUETOOTH_CONNECT. */
+    static void checkConnected(Context c, Consumer<Boolean> cb) {
+        BluetoothAdapter adapter = c.getSystemService(BluetoothManager.class).getAdapter();
+        BluetoothProfile.ServiceListener listener = new BluetoothProfile.ServiceListener() {
+            @Override
+            public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                boolean on = proxy.getConnectionState(adapter.getRemoteDevice(MAC)) == BluetoothProfile.STATE_CONNECTED;
+                adapter.closeProfileProxy(profile, proxy);
+                cb.accept(on);
+            }
+
+            @Override
+            public void onServiceDisconnected(int profile) {}
+        };
+        if (adapter == null || !adapter.isEnabled() || !adapter.getProfileProxy(c, listener, BluetoothProfile.A2DP)) {
+            cb.accept(false);
+        }
     }
 
     /** Blocking; call off the main thread. The earbuds don't report mode, so the last one set is remembered. */

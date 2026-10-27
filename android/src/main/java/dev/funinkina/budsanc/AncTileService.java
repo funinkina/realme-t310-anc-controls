@@ -2,7 +2,13 @@ package dev.funinkina.budsanc;
 
 import android.Manifest;
 import android.app.PendingIntent;
+import android.bluetooth.BluetoothA2dp;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
@@ -10,14 +16,40 @@ import android.os.Looper;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 
-/** Tap cycles Normal → Noise Cancellation → Transparent. Long-press opens MainActivity. */
+/** Tap cycles Normal → Noise Cancellation → Transparent. Long-press opens MainActivity. Unavailable while the buds are disconnected. */
 public class AncTileService extends TileService {
     private static volatile boolean busy;
     private final Handler main = new Handler(Looper.getMainLooper());
+    private boolean connected = true; // optimistic until checked, so the tile doesn't flash unavailable
+    private boolean listening;
+
+    private final BroadcastReceiver a2dp = new BroadcastReceiver() {
+        @Override
+        @SuppressWarnings("deprecation")
+        public void onReceive(Context c, Intent i) {
+            BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+            if (d == null || !Buds.MAC.equals(d.getAddress())) return;
+            connected = i.getIntExtra(BluetoothProfile.EXTRA_STATE, -1) == BluetoothProfile.STATE_CONNECTED;
+            refresh();
+        }
+    };
 
     @Override
     public void onStartListening() {
-        render(busy ? "Switching…" : null);
+        refresh();
+        if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return;
+        registerReceiver(a2dp, new IntentFilter(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED), RECEIVER_NOT_EXPORTED);
+        listening = true;
+        Buds.checkConnected(this, on -> {
+            connected = on;
+            refresh();
+        });
+    }
+
+    @Override
+    public void onStopListening() {
+        if (listening) unregisterReceiver(a2dp);
+        listening = false;
     }
 
     @Override
@@ -43,9 +75,19 @@ public class AncTileService extends TileService {
         }).start();
     }
 
+    private void refresh() {
+        render(busy ? "Switching…" : null);
+    }
+
     private void render(String subtitle) {
         Tile tile = getQsTile();
         if (tile == null) return;
+        if (!connected) {
+            tile.setState(Tile.STATE_UNAVAILABLE);
+            tile.setSubtitle("Not connected");
+            tile.updateTile();
+            return;
+        }
         int mode = Buds.current(this);
         tile.setState(mode == 0 ? Tile.STATE_INACTIVE : Tile.STATE_ACTIVE);
         tile.setSubtitle(subtitle != null ? subtitle : Buds.NAMES[mode]);
