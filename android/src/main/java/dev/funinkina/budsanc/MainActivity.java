@@ -12,13 +12,16 @@ import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 /** Grants the Bluetooth permission the tile can't request, and offers direct mode controls. */
 public class MainActivity extends Activity {
     private static final String[] DETAILS = {"Noise control off", "Blocks outside sound", "Lets outside sound in"};
     private final View[] modes = new View[Buds.NAMES.length];
     private TextView connection, detail;
+    private Switch game;
     private static boolean busy; // static: survives rotation so a recreated activity can't open a second socket
 
     @Override
@@ -40,6 +43,10 @@ public class MainActivity extends Activity {
             modes[i] = v;
         }
         show(Buds.current(this), null);
+
+        game = findViewById(R.id.game);
+        game.setChecked(Buds.game(this));
+        game.setOnClickListener(v -> setGame(game.isChecked()));
     }
 
     @Override
@@ -72,8 +79,9 @@ public class MainActivity extends Activity {
         }
         Buds.checkConnected(this, on -> {
             connection.setText(on ? "realme Buds T310 · Connected" : "Not connected");
-            if (on && !busy) Buds.sync(this, () -> {
+            if (on && !busy) Buds.sync(this, true, () -> {
                 if (!busy) show(Buds.current(this), null);
+                game.setChecked(Buds.game(this));
             });
         });
     }
@@ -93,6 +101,24 @@ public class MainActivity extends Activity {
             runOnUiThread(() -> {
                 busy = false;
                 show(Buds.current(this), err);
+            });
+        }).start();
+    }
+
+    private void setGame(boolean on) {
+        game.setEnabled(false);
+        new Thread(() -> {
+            String error = null;
+            try {
+                Buds.setGame(this, on);
+            } catch (Exception e) {
+                error = "Couldn't switch game mode: " + (e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName());
+            }
+            String err = error;
+            runOnUiThread(() -> {
+                game.setEnabled(true);
+                game.setChecked(Buds.game(this));
+                if (err != null) Toast.makeText(this, err, Toast.LENGTH_SHORT).show();
             });
         }).start();
     }

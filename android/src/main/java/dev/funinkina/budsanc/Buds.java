@@ -24,11 +24,16 @@ final class Buds {
     static final String[] NAMES = {"Normal", "Noise Cancellation", "Transparent"};
     static final int[] ICONS = {R.drawable.ic_noise_control_off, R.drawable.ic_noise_control_on, R.drawable.ic_noise_aware};
     private static final byte[] CODES = {0x01, 0x08, 0x02};
+    private static final int GAME = 0x06; // feature id, from the realme Link capture
     private static final UUID SPP = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
     private static final long TIMEOUT_MS = 6000;
 
     static int current(Context c) {
         return prefs(c).getInt("mode", 0);
+    }
+
+    static boolean game(Context c) {
+        return prefs(c).getBoolean("game", false);
     }
 
     /** Async; cb runs on the main thread. Requires BLUETOOTH_CONNECT. */
@@ -66,13 +71,30 @@ final class Buds {
         prefs(c).edit().putInt("mode", mode).apply();
     }
 
-    /** Refreshes the remembered mode from the buds in the background, then runs done on the main thread. */
-    static void sync(Context c, Runnable done) {
+    /** Blocking; call off the main thread. */
+    static synchronized boolean readGame(Context c) throws IOException {
+        byte[] r = exchange(c, frame(0x0d, 0x01, 0x01, GAME), 0x81);
+        if (r.length < 13 || r[9] != 0 || r[11] != GAME) throw new IOException("Unexpected game mode reply");
+        boolean on = r[12] != 0;
+        prefs(c).edit().putBoolean("game", on).apply();
+        return on;
+    }
+
+    /** Blocking; call off the main thread. */
+    static synchronized void setGame(Context c, boolean on) throws IOException {
+        byte[] r = exchange(c, frame(0x03, 0x04, GAME, on ? 1 : 0), 0x84);
+        if (r[9] != 0) throw new IOException("Earbuds rejected the command");
+        prefs(c).edit().putBoolean("game", on).apply();
+    }
+
+    /** Refreshes the remembered state from the buds in the background, then runs done on the main thread. */
+    static void sync(Context c, boolean withGame, Runnable done) {
         new Thread(() -> {
             try {
                 read(c);
+                if (withGame) readGame(c);
             } catch (Exception ignored) {
-                // Keep the last known mode.
+                // Keep the last known state.
             }
             new Handler(Looper.getMainLooper()).post(done);
         }).start();
