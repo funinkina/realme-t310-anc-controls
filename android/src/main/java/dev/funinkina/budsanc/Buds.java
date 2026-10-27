@@ -10,10 +10,15 @@ import android.os.Handler;
 import android.os.Looper;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.function.Consumer;
 
-/** Same protocol as realme_anc.py: one 'aa' frame over SPP, earbuds ACK it. */
+/**
+ * realme 'aa' protocol over SPP (decoded from a realme Link btsnoop capture):
+ * aa | len | 00 00 | cmd | type | seq | datalen (LE16) | data. Type 01 = read, 04 = write; replies set the high bit.
+ */
 final class Buds {
     static final String MAC = "88:0E:85:C5:FA:87";
     static final String[] NAMES = {"Normal", "Noise Cancellation", "Transparent"};
@@ -45,8 +50,48 @@ final class Buds {
         }
     }
 
-    /** Blocking; call off the main thread. The earbuds don't report mode, so the last one set is remembered. */
+    /** Blocking; call off the main thread. Asks the buds for their mode (it changes when the buds are long-pressed). */
+    static int read(Context c) throws IOException {
+        byte[] r = exchange(c, frame(0x0c, 0x01, 0x01, 0x01), 0x81);
+        int mode = r.length > 12 && r[9] == 0 ? indexOf(r[12]) : -1;
+        if (mode < 0) throw new IOException("Unexpected mode reply");
+        prefs(c).edit().putInt("mode", mode).apply();
+        return mode;
+    }
+
+    /** Blocking; call off the main thread. */
     static void set(Context c, int mode) throws IOException {
+        byte[] r = exchange(c, frame(0x04, 0x04, 0x01, 0x01, CODES[mode]), 0x84);
+        if (r[9] != 0) throw new IOException("Earbuds rejected the command");
+        prefs(c).edit().putInt("mode", mode).apply();
+    }
+
+    /** Refreshes the remembered mode from the buds in the background, then runs done on the main thread. */
+    static void sync(Context c, Runnable done) {
+        new Thread(() -> {
+            try {
+                read(c);
+            } catch (IOException ignored) {
+                // Keep the last known mode.
+            }
+            new Handler(Looper.getMainLooper()).post(done);
+        }).start();
+    }
+
+    private static byte[] frame(int cmd, int type, int... data) {
+        byte[] f = new byte[9 + data.length];
+        f[0] = (byte) 0xAA;
+        f[1] = (byte) (7 + data.length);
+        f[4] = (byte) cmd;
+        f[5] = (byte) type;
+        f[6] = 0x01;
+        f[7] = (byte) data.length;
+        for (int i = 0; i < data.length; i++) f[9 + i] = (byte) data[i];
+        return f;
+    }
+
+    /** Sends one frame and returns the reply with the same cmd and the given type, skipping notifications. */
+    private static byte[] exchange(Context c, byte[] frame, int replyType) throws IOException {
         BluetoothAdapter adapter = c.getSystemService(BluetoothManager.class).getAdapter();
         if (adapter == null || !adapter.isEnabled()) throw new IOException("Bluetooth is off");
         BluetoothSocket sock = adapter.getRemoteDevice(MAC).createRfcommSocketToServiceRecord(SPP);
@@ -59,16 +104,36 @@ final class Buds {
         main.postDelayed(kill, TIMEOUT_MS);
         try {
             sock.connect();
-            sock.getOutputStream().write(new byte[]{
-                    (byte) 0xAA, 0x0A, 0x00, 0x00, 0x04, 0x04, 0x01, 0x03, 0x00, 0x01, 0x01, CODES[mode]});
-            byte[] ack = new byte[64];
-            int n = sock.getInputStream().read(ack);
-            if (n < 10 || ack[5] != (byte) 0x84 || ack[9] != 0) throw new IOException("Earbuds rejected the command");
+            sock.getOutputStream().write(frame);
+            InputStream in = sock.getInputStream();
+            byte[] buf = new byte[512];
+            int len = 0;
+            while (true) {
+                int n = in.read(buf, len, buf.length - len);
+                if (n < 0) throw new IOException("Earbuds closed the connection");
+                len += n;
+                int i = 0;
+                while (len - i >= 2 && len - i >= (buf[i + 1] & 0xff) + 2) {
+                    if (buf[i] != (byte) 0xAA) throw new IOException("Unexpected data from earbuds");
+                    int size = (buf[i + 1] & 0xff) + 2;
+                    if (size >= 10 && buf[i + 4] == frame[4] && (buf[i + 5] & 0xff) == replyType) {
+                        return Arrays.copyOfRange(buf, i, i + size);
+                    }
+                    i += size;
+                }
+                System.arraycopy(buf, i, buf, 0, len - i);
+                len -= i;
+                if (len == buf.length) throw new IOException("Reply too long");
+            }
         } finally {
             main.removeCallbacks(kill);
             sock.close();
         }
-        prefs(c).edit().putInt("mode", mode).apply();
+    }
+
+    private static int indexOf(byte code) {
+        for (int i = 0; i < CODES.length; i++) if (CODES[i] == code) return i;
+        return -1;
     }
 
     static boolean tileAdded(Context c) {

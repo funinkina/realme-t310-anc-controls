@@ -70,7 +70,12 @@ public class MainActivity extends Activity {
             connection.setText("Bluetooth permission needed");
             return;
         }
-        Buds.checkConnected(this, on -> connection.setText(on ? "realme Buds T310 · Connected" : "Not connected"));
+        Buds.checkConnected(this, on -> {
+            connection.setText(on ? "realme Buds T310 · Connected" : "Not connected");
+            if (on && !busy) Buds.sync(this, () -> {
+                if (!busy) show(Buds.current(this), null);
+            });
+        });
     }
 
     private void set(int mode) {
