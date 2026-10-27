@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Icon;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,6 +19,7 @@ import android.service.quicksettings.TileService;
 
 /** Tap cycles Normal → Noise Cancellation → Transparent. Long-press opens MainActivity. Unavailable while the buds are disconnected. */
 public class AncTileService extends TileService {
+    private static final int[] ICONS = {R.drawable.ic_noise_control_off, R.drawable.ic_noise_control_on, R.drawable.ic_noise_aware};
     private static volatile boolean busy;
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean connected = true; // optimistic until checked, so the tile doesn't flash unavailable
@@ -84,12 +86,14 @@ public class AncTileService extends TileService {
         if (tile == null) return;
         if (!connected) {
             tile.setState(Tile.STATE_UNAVAILABLE);
+            tile.setIcon(Icon.createWithResource(this, R.drawable.ic_buds));
             tile.setSubtitle("Not connected");
             tile.updateTile();
             return;
         }
         int mode = Buds.current(this);
         tile.setState(mode == 0 ? Tile.STATE_INACTIVE : Tile.STATE_ACTIVE);
+        tile.setIcon(Icon.createWithResource(this, ICONS[mode]));
         tile.setSubtitle(subtitle != null ? subtitle : Buds.NAMES[mode]);
         tile.updateTile();
     }
