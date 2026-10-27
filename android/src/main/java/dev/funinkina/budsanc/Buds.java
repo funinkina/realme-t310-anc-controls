@@ -51,7 +51,7 @@ final class Buds {
     }
 
     /** Blocking; call off the main thread. Asks the buds for their mode (it changes when the buds are long-pressed). */
-    static int read(Context c) throws IOException {
+    static synchronized int read(Context c) throws IOException {
         byte[] r = exchange(c, frame(0x0c, 0x01, 0x01, 0x01), 0x81);
         int mode = r.length > 12 && r[9] == 0 ? indexOf(r[12]) : -1;
         if (mode < 0) throw new IOException("Unexpected mode reply");
@@ -60,7 +60,7 @@ final class Buds {
     }
 
     /** Blocking; call off the main thread. */
-    static void set(Context c, int mode) throws IOException {
+    static synchronized void set(Context c, int mode) throws IOException {
         byte[] r = exchange(c, frame(0x04, 0x04, 0x01, 0x01, CODES[mode]), 0x84);
         if (r[9] != 0) throw new IOException("Earbuds rejected the command");
         prefs(c).edit().putInt("mode", mode).apply();
@@ -71,7 +71,7 @@ final class Buds {
         new Thread(() -> {
             try {
                 read(c);
-            } catch (IOException ignored) {
+            } catch (Exception ignored) {
                 // Keep the last known mode.
             }
             new Handler(Looper.getMainLooper()).post(done);
