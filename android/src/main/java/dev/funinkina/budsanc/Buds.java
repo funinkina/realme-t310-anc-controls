@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -112,8 +113,23 @@ final class Buds {
         return f;
     }
 
-    /** Sends one frame and returns the reply with the same cmd and the given type, skipping notifications. */
+    /**
+     * Another app (realme Link) may hold the SPP channel; our failed connect drops it and it waits ~4s before
+     * reconnecting, so a retry lands in that gap. Every frame we send is idempotent, so retrying is safe.
+     */
     private static byte[] exchange(Context c, byte[] frame, int replyType) throws IOException {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                return exchangeOnce(c, frame, replyType);
+            } catch (IOException e) {
+                if (attempt == 2 || "Bluetooth is off".equals(e.getMessage())) throw e;
+            }
+            SystemClock.sleep(700);
+        }
+    }
+
+    /** Sends one frame and returns the reply with the same cmd and the given type, skipping notifications. */
+    private static byte[] exchangeOnce(Context c, byte[] frame, int replyType) throws IOException {
         BluetoothAdapter adapter = c.getSystemService(BluetoothManager.class).getAdapter();
         if (adapter == null || !adapter.isEnabled()) throw new IOException("Bluetooth is off");
         BluetoothSocket sock = adapter.getRemoteDevice(MAC).createRfcommSocketToServiceRecord(SPP);
