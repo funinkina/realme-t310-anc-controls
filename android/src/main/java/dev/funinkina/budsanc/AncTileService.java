@@ -19,7 +19,6 @@ import android.service.quicksettings.TileService;
 
 /** Tap cycles Normal → Noise Cancellation → Transparent. Long-press opens MainActivity. Unavailable while the buds are disconnected. */
 public class AncTileService extends TileService {
-    private static final int[] ICONS = {R.drawable.ic_noise_control_off, R.drawable.ic_noise_control_on, R.drawable.ic_noise_aware};
     private static volatile boolean busy;
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean connected = true; // optimistic until checked, so the tile doesn't flash unavailable
@@ -38,6 +37,7 @@ public class AncTileService extends TileService {
 
     @Override
     public void onStartListening() {
+        Buds.setTileAdded(this, true);
         refresh();
         if (checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) return;
         registerReceiver(a2dp, new IntentFilter(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED), RECEIVER_NOT_EXPORTED);
@@ -46,6 +46,11 @@ public class AncTileService extends TileService {
             connected = on;
             refresh();
         });
+    }
+
+    @Override
+    public void onTileRemoved() {
+        Buds.setTileAdded(this, false);
     }
 
     @Override
@@ -93,7 +98,7 @@ public class AncTileService extends TileService {
         }
         int mode = Buds.current(this);
         tile.setState(mode == 0 ? Tile.STATE_INACTIVE : Tile.STATE_ACTIVE);
-        tile.setIcon(Icon.createWithResource(this, ICONS[mode]));
+        tile.setIcon(Icon.createWithResource(this, Buds.ICONS[mode]));
         tile.setSubtitle(subtitle != null ? subtitle : Buds.NAMES[mode]);
         tile.updateTile();
     }

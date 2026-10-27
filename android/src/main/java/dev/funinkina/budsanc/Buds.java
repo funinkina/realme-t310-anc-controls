@@ -17,6 +17,7 @@ import java.util.function.Consumer;
 final class Buds {
     static final String MAC = "88:0E:85:C5:FA:87";
     static final String[] NAMES = {"Normal", "Noise Cancellation", "Transparent"};
+    static final int[] ICONS = {R.drawable.ic_noise_control_off, R.drawable.ic_noise_control_on, R.drawable.ic_noise_aware};
     private static final byte[] CODES = {0x01, 0x08, 0x02};
     private static final UUID SPP = UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
     private static final long TIMEOUT_MS = 6000;
@@ -68,6 +69,14 @@ final class Buds {
             sock.close();
         }
         prefs(c).edit().putInt("mode", mode).apply();
+    }
+
+    static boolean tileAdded(Context c) {
+        return prefs(c).getBoolean("tile", false);
+    }
+
+    static void setTileAdded(Context c, boolean added) {
+        prefs(c).edit().putBoolean("tile", added).apply();
     }
 
     private static SharedPreferences prefs(Context c) {
