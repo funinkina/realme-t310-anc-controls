@@ -80,8 +80,11 @@ Raycast.
 ### Android: Quick Settings tile
 
 `android/` is a tiny app (no dependencies) adding a **Buds ANC** tile: tap
-cycles Normal → Noise Cancellation → Transparent, long-press opens a screen
-with direct buttons for each mode.
+cycles Normal → Noise Cancellation → Transparent, long-press opens a Material
+You screen with a button per mode and a **Game mode** toggle. The tile goes
+unavailable ("Not connected") while the buds are disconnected, and both the tile
+and the app read the buds' actual mode when shown, so switching by long-pressing
+an earbud is reflected.
 
 GitHub Actions builds it on every push touching `android/`. To install:
 
@@ -91,10 +94,14 @@ adb install -r BudsAnc-debug.apk
 ```
 
 Open **Buds ANC** once to grant the Bluetooth permission, then add the tile
-via Quick Settings → edit. Each CI build is signed with a fresh debug key, so
-uninstall before installing a newer build. If the tile shows "Failed" while
-Realme Link is running, force-stop Realme Link (it may hold the SPP channel).
-The earbuds don't report their mode, so the tile shows the last mode it set.
+(the app offers the system "add tile" prompt on Android 13+). Builds are signed
+with the committed `android/debug.keystore`, so newer builds install as updates.
+If Realme Link is installed it holds the SPP channel; the app retries inside the
+gap Realme Link leaves after being bumped, so both can coexist.
+
+Android has no public API for putting earbud ANC into Settings or the volume
+panel, and the T310 doesn't implement Fast Pair's ANC extension, so a tile is as
+native as it gets. See `docs/native-anc-research.md`.
 
 ---
 
@@ -360,6 +367,26 @@ aa 08 00 00 04 84 [seq] 01 00 [status]
 
 `status = 0x00` means success. The `seq` byte mirrors the request.
 
+### More commands (from a second Realme Link capture)
+
+The first `cmd` byte is the command, the second is the type: `01` read,
+`04` write, `02` notification; replies set bit 7 (`81`, `84`, `82`). Replies
+start with a status byte (`00` = OK). Unsolicited frames from the earbuds have
+flags `08 00` instead of `00 00`, so a reader must skip them while waiting for
+its reply.
+
+| What                 | Request (`cmd type` / data)  | Reply data                 |
+| -------------------- | ---------------------------- | -------------------------- |
+| Read ANC mode        | `0c 01` / `01 01`            | `00 01 01 [MODE]`          |
+| Read feature         | `0d 01` / `01 [id]`          | `00 01 [id] [0/1]`         |
+| Set feature          | `03 04` / `[id] [0/1]`       | `00`                       |
+| Battery              | `06 01` / –                  | `00 03 02 [R] 01 [L] 03 [case]` |
+| Firmware             | `05 01` / –                  | ASCII, e.g. `1,2,1.1.0.45,2,2,1.1.0.45` |
+
+Feature `0x06` is game mode (low latency). Notifications (`04 02`, flags
+`08 00`): `03 01 [MODE]` when the mode changes on the buds (long-press),
+`01 03 ...` battery, `06 ...` connected hosts by name.
+
 ---
 
 ## Files
@@ -369,6 +396,7 @@ aa 08 00 00 04 84 [seq] 01 00 [status]
 | `realme_anc.py`        | CLI tool — switches ANC mode via RFCOMM (Linux sockets / macOS IOBluetooth) |
 | `raycast/`             | Raycast script commands for each mode (macOS)                      |
 | `android/`             | Android Quick Settings tile app (built by GitHub Actions)          |
+| `docs/native-anc-research.md` | Why Android can't show T310 ANC natively (APIs, OEMs, Fast Pair test) |
 | `analyze.py`           | Parses a btsnoop_hci.log and extracts/decodes RFCOMM UIH payloads  |
 | `sniff.py`             | Linux-side RFCOMM probe (connectivity check, manual hex send/recv) |
 | `btsnoop_hci.log`      | Captured Android HCI log used for analysis                         |
