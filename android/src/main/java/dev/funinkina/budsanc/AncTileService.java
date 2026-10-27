@@ -45,6 +45,7 @@ public class AncTileService extends TileService {
         Buds.checkConnected(this, on -> {
             connected = on;
             refresh();
+            if (on && !busy) Buds.sync(this, this::refresh);
         });
     }
 
